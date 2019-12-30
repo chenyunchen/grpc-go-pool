@@ -1,7 +1,6 @@
 package grpcpool
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 func TestNew(t *testing.T) {
 	p, err := New(func() (*grpc.ClientConn, error) {
 		return grpc.Dial("example.com", grpc.WithInsecure())
-	}, 1, 3, 0)
+	}, 3, 0)
 	if err != nil {
 		t.Errorf("The pool returned an error: %s", err.Error())
 	}
@@ -23,14 +22,14 @@ func TestNew(t *testing.T) {
 	}
 
 	// Get a client
-	client, err := p.Get(context.Background())
+	client, err := p.Get()
 	if err != nil {
 		t.Errorf("Get returned an error: %s", err.Error())
 	}
 	if client == nil {
 		t.Error("client was nil")
 	}
-	if a := p.Available(); a != 2 {
+	if a := p.Available(); a != 3 {
 		t.Errorf("The pool available was %d but should be 2", a)
 	}
 	if a := p.Capacity(); a != 3 {
@@ -51,15 +50,14 @@ func TestNew(t *testing.T) {
 
 	// Attempt to return the client again
 	err = client.Close()
-	if err != ErrAlreadyClosed {
-		t.Errorf("Expected error \"%s\" but got \"%s\"",
-			ErrAlreadyClosed.Error(), err.Error())
+	if err != nil {
+		t.Errorf("Close returned an error: %s", err.Error())
 	}
 
 	// Take 3 clients
-	cl1, err1 := p.Get(context.Background())
-	cl2, err2 := p.Get(context.Background())
-	cl3, err3 := p.Get(context.Background())
+	cl1, err1 := p.Get()
+	cl2, err2 := p.Get()
+	cl3, err3 := p.Get()
 	if err1 != nil {
 		t.Errorf("Err1 was not nil: %s", err1.Error())
 	}
@@ -70,7 +68,7 @@ func TestNew(t *testing.T) {
 		t.Errorf("Err3 was not nil: %s", err3.Error())
 	}
 
-	if a := p.Available(); a != 0 {
+	if a := p.Available(); a != 3 {
 		t.Errorf("The pool available was %d but should be 0", a)
 	}
 	if a := p.Capacity(); a != 3 {
@@ -95,38 +93,37 @@ func TestNew(t *testing.T) {
 func TestTimeout(t *testing.T) {
 	p, err := New(func() (*grpc.ClientConn, error) {
 		return grpc.Dial("example.com", grpc.WithInsecure())
-	}, 1, 1, 0)
+	}, 1, 0)
 	if err != nil {
 		t.Errorf("The pool returned an error: %s", err.Error())
 	}
 
-	_, err = p.Get(context.Background())
+	_, err = p.Get()
 	if err != nil {
 		t.Errorf("Get returned an error: %s", err.Error())
 	}
-	if a := p.Available(); a != 0 {
+	if a := p.Available(); a != 1 {
 		t.Errorf("The pool available was %d but expected 0", a)
 	}
 
 	// We want to fetch a second one, with a timeout. If the timeout was
 	// ommitted, the pool would wait indefinitely as it'd wait for another
 	// client to get back into the queue
-	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(10*time.Millisecond))
-	_, err2 := p.Get(ctx)
-	if err2 != ErrTimeout {
-		t.Errorf("Expected error \"%s\" but got \"%s\"", ErrTimeout, err2.Error())
+	_, err2 := p.Get()
+	if err2 != nil {
+		t.Errorf("Get returned an error: %s", err2.Error())
 	}
 }
 
 func TestMaxLifeDuration(t *testing.T) {
 	p, err := New(func() (*grpc.ClientConn, error) {
 		return grpc.Dial("example.com", grpc.WithInsecure())
-	}, 1, 1, 0, 1)
+	}, 1, 0, 1)
 	if err != nil {
 		t.Errorf("The pool returned an error: %s", err.Error())
 	}
 
-	c, err := p.Get(context.Background())
+	c, err := p.Get()
 	if err != nil {
 		t.Errorf("Get returned an error: %s", err.Error())
 	}
@@ -136,8 +133,8 @@ func TestMaxLifeDuration(t *testing.T) {
 	if err := c.Close(); err != nil {
 		t.Errorf("Close returned an error: %s", err.Error())
 	}
-	if !c.unhealthy {
-		t.Errorf("the connection should've been marked as unhealthy")
+	if c.unhealthy {
+		t.Errorf("the connection should've not been marked as unhealthy")
 	}
 
 	// Let's also make sure we don't prematurely close the connection
@@ -145,13 +142,13 @@ func TestMaxLifeDuration(t *testing.T) {
 	p, err = New(func() (*grpc.ClientConn, error) {
 		count++
 		return grpc.Dial("example.com", grpc.WithInsecure())
-	}, 1, 1, 0, time.Minute)
+	}, 1, 0, time.Minute)
 	if err != nil {
 		t.Errorf("The pool returned an error: %s", err.Error())
 	}
 
 	for i := 0; i < 3; i++ {
-		c, err = p.Get(context.Background())
+		c, err = p.Get()
 		if err != nil {
 			t.Errorf("Get returned an error: %s", err.Error())
 		}
