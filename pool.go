@@ -184,7 +184,7 @@ func (c *ClientConn) Close() error {
 	if c.unhealthy {
 		c.ClientConn.Close()
 		c.unhealthy = false
-		c.ClientConn = nil // Mark as closed
+		c.ClientConn = nil // Mark as closed if unhealthy
 	}
 
 	return nil
